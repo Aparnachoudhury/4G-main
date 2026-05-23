@@ -8,11 +8,12 @@ import json
 import os
 
 if not firebase_admin._apps:
-    firebase_config = json.loads(os.getenv("FIREBASE_CREDENTIALS"))
-    cred = credentials.Certificate(firebase_config)
-    firebase_admin.initialize_app(cred)
+    firebase_creds = os.getenv("FIREBASE_CREDENTIALS")
 
-firebase_db = firestore.client()
+    if firebase_creds:
+        firebase_config = json.loads(firebase_creds)
+        cred = credentials.Certificate(firebase_config)
+        firebase_admin.initialize_app(cred)
 
 firebase_db = firestore.client()
 
