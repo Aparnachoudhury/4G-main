@@ -7,13 +7,23 @@ from firebase_admin import credentials, firestore
 import json
 import os
 
+import firebase_admin
+from firebase_admin import credentials, firestore
+import json
+import os
+
 if not firebase_admin._apps:
     firebase_creds = os.getenv("FIREBASE_CREDENTIALS")
 
     if firebase_creds:
+        # Railway / production
         firebase_config = json.loads(firebase_creds)
         cred = credentials.Certificate(firebase_config)
-        firebase_admin.initialize_app(cred)
+    else:
+        # Local
+        cred = credentials.Certificate("serviceAccountKey.json")
+
+    firebase_admin.initialize_app(cred)
 
 firebase_db = firestore.client()
 
@@ -193,94 +203,64 @@ async def health_check():
 
 @app.post("/4g/pb/upload")
 async def pb_upload(request: Request, background_tasks: BackgroundTasks):
-
     try:
-
         content_type = request.headers.get("content-type", "")
-
         db = await get_database()
         collection = db.get_collection("health_data")
 
-        # ---------- JSON test payload ----------
         if "application/json" in content_type:
-
             data = await request.json()
-
             health_data = {
                 "device_id": data.get("device_id", "unknown"),
                 "timestamp": data.get("timestamp"),
-                "raw_hex": data.get("raw_hex"),
-                "decoded": data.get("decoded"),
-                "size": data.get("size"),
+                "raw_hex":   data.get("raw_hex"),
+                "decoded":   data.get("decoded"),
+                "size":      data.get("size"),
                 "created_at": datetime.now(timezone.utc)
             }
-
-        # ---------- Real watch binary payload ----------
         else:
-
-            payload = await request.body()
-
+            payload   = await request.body()
             device_id = get_device_id(request)
-
-            raw_hex = payload.hex()
+            raw_hex   = payload.hex()
 
             try:
                 decoded_packets = decode_upload(raw_hex)
-
                 decoded_value = (
-                    decoded_packets[0]
-                    if len(decoded_packets) == 1
-                    else decoded_packets
-                    if decoded_packets
+                    decoded_packets[0] if len(decoded_packets) == 1
+                    else decoded_packets if decoded_packets
                     else None
                 )
-
             except Exception as decode_err:
-
                 logger.warning(f"Decode failed: {decode_err}")
-
                 decoded_value = None
 
-
             health_data = {
-                "device_id": device_id,
-                "timestamp": get_current_timestamp(),
-                "raw_hex": raw_hex,
-                "decoded": decoded_value,
-                "size": len(payload),
+                "device_id":  device_id,
+                "timestamp":  get_current_timestamp(),
+                "raw_hex":    raw_hex,
+                "decoded":    decoded_value,
+                "size":       len(payload),
                 "created_at": datetime.now(timezone.utc)
             }
 
-        # save MongoDB
-        try:
-            await collection.insert_one(health_data)
+        # Save to MongoDB
+        await collection.insert_one(health_data)
 
-    # save Firebase
-            firebase_doc = health_data.copy()
+        # Save to Firebase
+        firebase_doc = health_data.copy()
+        if "_id" in firebase_doc:
+            firebase_doc["_id"] = str(firebase_doc["_id"])
 
-            if "_id" in firebase_doc:
-                firebase_doc["_id"] = str(firebase_doc["_id"])
+        firebase_db.collection("live_devices").document(
+            health_data["device_id"]
+        ).set(firebase_doc)
 
-            firebase_db.collection(
-                "live_devices"
-            ).document(
-                health_data["device_id"]
-            ).set(firebase_doc)
+        print("Saved:", health_data["device_id"])
 
-            print("Saved:", health_data["device_id"])
+    except Exception as e:
+        logger.error(f"Error in pb_upload: {e}")
 
-            return Response(
-                content=b'\x00',
-                media_type='application/octet-stream'
-            )
-
-        except Exception as e:
-            logger.error(f"Error in pb_upload: {e}")
-
-            return Response(
-                content=b'\x00',
-            media_type='application/octet-stream'
-            )
+    return Response(content=b'\x00', media_type='application/octet-stream')
  
 @app.post("/4g/alarm/upload")
 async def alarm_upload(request: Request):
