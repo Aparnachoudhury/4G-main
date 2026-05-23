@@ -252,35 +252,35 @@ async def pb_upload(request: Request, background_tasks: BackgroundTasks):
             }
 
         # save MongoDB
-        await collection.insert_one(health_data)
+        try:
+            await collection.insert_one(health_data)
 
-        # save Firebase
-       firebase_doc = health_data.copy()
+    # save Firebase
+            firebase_doc = health_data.copy()
 
-if "_id" in firebase_doc:
-    firebase_doc["_id"] = str(firebase_doc["_id"])
+            if "_id" in firebase_doc:
+                firebase_doc["_id"] = str(firebase_doc["_id"])
 
-firebase_db.collection(
-    "live_devices"
-).document(
-    health_data["device_id"]
-).set(firebase_doc)
+            firebase_db.collection(
+                "live_devices"
+            ).document(
+                health_data["device_id"]
+            ).set(firebase_doc)
 
-        print("Saved:", health_data["device_id"])
+            print("Saved:", health_data["device_id"])
 
-        return Response(
-            content=b'\x00',
+            return Response(
+                content=b'\x00',
+                media_type='application/octet-stream'
+            )
+
+        except Exception as e:
+            logger.error(f"Error in pb_upload: {e}")
+
+            return Response(
+                content=b'\x00',
             media_type='application/octet-stream'
-        )
-
-    except Exception as e:
-
-        logger.error(f"Error in pb_upload: {e}")
-
-        return Response(
-            content=b'\x00',
-            media_type='application/octet-stream'
-        )
+            )
  
 @app.post("/4g/alarm/upload")
 async def alarm_upload(request: Request):
