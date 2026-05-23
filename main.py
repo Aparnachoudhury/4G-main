@@ -255,9 +255,16 @@ async def pb_upload(request: Request, background_tasks: BackgroundTasks):
         await collection.insert_one(health_data)
 
         # save Firebase
-        firebase_db.collection("live_devices").document(
-            health_data["device_id"]
-        ).set(health_data)
+       firebase_doc = health_data.copy()
+
+if "_id" in firebase_doc:
+    firebase_doc["_id"] = str(firebase_doc["_id"])
+
+firebase_db.collection(
+    "live_devices"
+).document(
+    health_data["device_id"]
+).set(firebase_doc)
 
         print("Saved:", health_data["device_id"])
 
