@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  # Main API service
+  iwown-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+      # MongoDB credentials will be loaded from .env file
+      - MONGODB_URL=${MONGODB_URL}
+      - MONGODB_DATABASE=${MONGODB_DATABASE}
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - iwown-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Nginx reverse proxy (optional)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      iwown-api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - iwown-network
+
+networks:
+  iwown-network:
+    driver: bridge
