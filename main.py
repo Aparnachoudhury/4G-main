@@ -4,10 +4,15 @@ Production-ready API for iWOWN device data ingestion and dashboard
 """
 import firebase_admin
 from firebase_admin import credentials, firestore
+import json
+import os
 
 if not firebase_admin._apps:
-    cred = credentials.Certificate("serviceAccountKey.json")
+    firebase_config = json.loads(os.getenv("FIREBASE_CREDENTIALS"))
+    cred = credentials.Certificate(firebase_config)
     firebase_admin.initialize_app(cred)
+
+firebase_db = firestore.client()
 
 firebase_db = firestore.client()
 
