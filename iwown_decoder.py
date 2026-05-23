@@ -401,22 +401,39 @@ def decode_packet(packet: bytes) -> Optional[Dict[str, Any]]:
     }
 
 
-def decode_upload(raw_hex: str) -> List[Dict[str, Any]]:
-    """
-    Main entry point.  Pass the raw_hex string stored in MongoDB.
-    Returns a list of decoded packet dicts (one upload may contain multiple packets).
-    """
+def decode_upload(raw_hex: str):
+
     try:
         raw = bytes.fromhex(raw_hex)
-    except ValueError as e:
-        logger.error(f"Invalid hex string: {e}")
+    except Exception as e:
+        logger.error(f"Invalid hex: {e}")
         return []
 
-    packets = split_packets(raw)
     results = []
-    for pkt in packets:
-        decoded = decode_packet(pkt)
-        if decoded:
+
+    try:
+        packets = split_packets(raw)
+
+        if not packets:
+            logger.warning("No DT packets found, treating as raw protobuf")
+
+            decoded = {
+                'opt_code': OPT_HEALTH,
+                'opt_name': 'health',
+                'crc_ok': True,
+                'raw_hex': raw.hex(),
+                'data': _decode_health(raw)
+            }
+
             results.append(decoded)
+
+        else:
+            for pkt in packets:
+                x = decode_packet(pkt)
+                if x:
+                    results.append(x)
+
+    except Exception as e:
+        logger.error(f"Decode failed: {e}")
 
     return results
