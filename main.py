@@ -114,10 +114,22 @@ def convert_mongodb_document(doc: dict) -> dict:
     return doc
 
 def get_device_id(request: Request, data: Optional[Dict] = None) -> str:
-    """Extract device ID from headers or data"""
-    device_id = request.headers.get('DeviceId')
+    device_id = (
+        request.headers.get('DeviceId') or
+        request.headers.get('deviceid') or
+        request.headers.get('DEVICEID') or
+        request.headers.get('X-Device-Id') or
+        request.headers.get('imei')
+    )
+
     if data and isinstance(data, dict):
-        device_id = data.get('deviceid') or data.get('DeviceId') or device_id
+        device_id = (
+            data.get('deviceid') or
+            data.get('DeviceId') or
+            data.get('imei') or
+            device_id
+        )
+
     return device_id or 'unknown'
 
 def log_request(endpoint: str, device_id: str, data_size: int = 0):
