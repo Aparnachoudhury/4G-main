@@ -23,9 +23,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
-# Copy application code (exclude unnecessary files)
-COPY main.py config.py database.py requirements.txt ./
-COPY .env* ./
+# Copy all application code
+COPY . .
 
 # Create logs directory
 RUN mkdir -p logs
