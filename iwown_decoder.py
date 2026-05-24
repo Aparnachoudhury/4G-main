@@ -401,28 +401,36 @@ def decode_packet(packet: bytes) -> Optional[Dict[str, Any]]:
     }
 
 
+
+    
 def decode_upload(raw_hex: str):
+
     try:
         raw = bytes.fromhex(raw_hex)
+
     except Exception as e:
         logger.error(f"Invalid hex: {e}")
         return []
-
-    results = []
 
     packets = split_packets(raw)
 
     if not packets:
         logger.warning("No DT packets found, treating as raw protobuf")
 
-        decoded = {
+        return [{
             'opt_code': OPT_HEALTH,
             'opt_name': 'health',
             'crc_ok': True,
             'raw_hex': raw.hex(),
             'data': _decode_health(raw)
-        }
+        }]
 
-        return [decoded]
+    results=[]
 
-    return results
+    for packet in packets:
+        decoded = decode_packet(packet)
+
+        if decoded:
+            results.append(decoded)
+
+    return results      
