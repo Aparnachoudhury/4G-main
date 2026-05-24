@@ -210,12 +210,26 @@ async def pb_upload(request: Request, background_tasks: BackgroundTasks):
 
         if "application/json" in content_type:
             data = await request.json()
+
+            decoded_value = {
+                "opt_code": 128,
+                "opt_name": "health",
+                "crc_ok": True,
+                "data": {
+                    "heart_rate_bpm": data.get("heart_rate") or data.get("heart_rate_bpm"),
+                    "spo2_percent": data.get("blood_oxygen") or data.get("spo2_percent"),
+                    "body_temperature_c": data.get("body_temp") or data.get("body_temperature_c"),
+                    "steps": data.get("steps"),
+                    "battery_level_pct": data.get("battery_level")
+                }
+            }
+
             health_data = {
                 "device_id": data.get("device_id", "unknown"),
-                "timestamp": data.get("timestamp"),
-                "raw_hex":   data.get("raw_hex"),
-                "decoded":   data.get("decoded"),
-                "size":      data.get("size"),
+                "timestamp": get_current_timestamp(),
+                "raw_hex": None,
+                "decoded": decoded_value,
+                "size": 0,
                 "created_at": datetime.now(timezone.utc)
             }
         else:
