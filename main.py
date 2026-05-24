@@ -263,7 +263,11 @@ async def pb_upload(request: Request, background_tasks: BackgroundTasks):
             }
 
         # Save to MongoDB
-        await collection.insert_one(health_data)
+        print("MONGO DATA:", health_data)
+
+        result = await collection.insert_one(health_data)
+
+        print("Inserted ID:", result.inserted_id)
 
         # Save to Firebase
         firebase_doc = health_data.copy()
