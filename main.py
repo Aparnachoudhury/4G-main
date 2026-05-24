@@ -210,28 +210,28 @@ async def pb_upload(request: Request, background_tasks: BackgroundTasks):
 
         if "application/json" in content_type:
             data = await request.json()
-
             decoded_value = {
                 "opt_code": 128,
                 "opt_name": "health",
                 "crc_ok": True,
                 "data": {
-                    "heart_rate_bpm": data.get("heart_rate") or data.get("heart_rate_bpm"),
-                    "spo2_percent": data.get("blood_oxygen") or data.get("spo2_percent"),
-                    "body_temperature_c": data.get("body_temp") or data.get("body_temperature_c"),
-                    "steps": data.get("steps"),
-                    "battery_level_pct": data.get("battery_level")
+                    "heart_rate_bpm":      data.get("heart_rate") or data.get("heart_rate_bpm"),
+                    "spo2_percent":        data.get("blood_oxygen") or data.get("spo2_percent"),
+                    "body_temperature_c":  data.get("body_temp") or data.get("body_temperature_c"),
+                    "steps":               data.get("steps"),
+                    "battery_level_pct":   data.get("battery_level"),
+                    "phone_number":        data.get("phone_number"),  # ← from JSON body
                 }
             }
-
             health_data = {
-                "device_id": data.get("device_id", "unknown"),
-                "timestamp": get_current_timestamp(),
-                "raw_hex": None,
-                "decoded": decoded_value,
-                "size": 0,
+                "device_id":  data.get("device_id", "unknown"),
+                "timestamp":  get_current_timestamp(),
+                "raw_hex":    None,
+                "decoded":    decoded_value,
+                "size":       0,
                 "created_at": datetime.now(timezone.utc)
             }
+
         else:
             payload   = await request.body()
             device_id = get_device_id(request)
@@ -244,6 +244,11 @@ async def pb_upload(request: Request, background_tasks: BackgroundTasks):
                     else decoded_packets if decoded_packets
                     else None
                 )
+                # Try to get phone from header
+                if decoded_value and isinstance(decoded_value, dict) and "data" in decoded_value:
+                    phone = request.headers.get("Phone-Number")
+                    if phone:
+                        decoded_value["data"]["phone_number"] = phone
             except Exception as decode_err:
                 logger.warning(f"Decode failed: {decode_err}")
                 decoded_value = None
@@ -275,7 +280,7 @@ async def pb_upload(request: Request, background_tasks: BackgroundTasks):
         logger.error(f"Error in pb_upload: {e}")
 
     return Response(content=b'\x00', media_type='application/octet-stream')
- 
+             
 @app.post("/4g/alarm/upload")
 async def alarm_upload(request: Request):
     try:
