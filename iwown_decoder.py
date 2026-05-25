@@ -120,99 +120,121 @@ def _parse_protobuf(buf: bytes) -> Dict[int, Any]:
 
 def _decode_health(payload: bytes) -> Dict[str, Any]:
     """
-    Decode opt=0x80 health data protobuf.
-
-    Typical field mapping (derived from iWOWN proto file patterns):
-      Field 1  – timestamp (unix seconds, uint32)
-      Field 2  – heart_rate (bpm, uint32)
-      Field 3  – spo2 (%, uint32)
-      Field 4  – hrv_ms (milliseconds, uint32)
-      Field 5  – stress_score (0-100, uint32)
-      Field 6  – steps (uint32)
-      Field 7  – calories (kcal, uint32)
-      Field 8  – distance (metres, uint32)
-      Field 9  – body_temperature (°C * 10, uint32)  → divide by 10
-      Field 10 – systolic_bp (mmHg, uint32)
-      Field 11 – diastolic_bp (mmHg, uint32)
-      Field 12 – sleep_state (0=awake,1=light,2=deep,3=REM, uint32)
-      Field 13 – battery_level (%, uint32)
-      Field 14 – signal_strength (dBm-style, int32)
-
-    NOTE: Field numbers may differ between firmware versions.
-          Unknown fields are preserved under 'raw_fields'.
+    Decode opt=0x80 health data using actual HisDataHealth proto structure.
+    Field 1  = time_stamp (DateTime = nested: field1=RtTime(field1=seconds), field2=timezone)
+    Field 3  = pedo_data  (HisHealthPedo: step=4, calorie=3, distance=5)
+    Field 4  = hr_data    (HisHealthHr: min=1, max=2, avg=3)
+    Field 5  = hrv_data   (HisHealthHrv: SDNN=1, RMSSD=2, PNN50=3, MEAN=4, fatigue=5)
+    Field 6  = bp_data    (HisHealthBp: sbp=1, dbp=2)
+    Field 12 = bxoy_data  (HisHealthBOxy: min_oxy=1, max_oxy=2, agv_oxy=3)
+    Field 13 = temperature_data (HisHealthTemp: type=1, evi_body=2, esti_arm=3)
     """
     f = _parse_protobuf(payload)
-
-    def _get(field: int, default=None):
-        v = f.get(field, default)
-        if isinstance(v, list):
-            v = v[-1]       # take the last value for scalars
-        return v
-
     result: Dict[str, Any] = {}
 
-    ts = _get(1)
-    if ts is not None:
-        result['timestamp_unix'] = int(ts)
+    # Field 1: DateTime (nested protobuf)
+    ts_raw = f.get(1)
+    if isinstance(ts_raw, bytes) and len(ts_raw) >= 2:
+        try:
+            ts_fields = _parse_protobuf(ts_raw)
+            rt_time_raw = ts_fields.get(1)  # RtTime message
+            if isinstance(rt_time_raw, bytes):
+                rt_fields = _parse_protobuf(rt_time_raw)
+                seconds = rt_fields.get(1)
+                if seconds:
+                    result['timestamp_unix'] = int(seconds)
+            elif isinstance(rt_time_raw, int):
+                result['timestamp_unix'] = int(rt_time_raw)
+        except Exception:
+            pass
 
-    hr = _get(2)
-    if hr is not None and 30 <= hr <= 250:
-        result['heart_rate_bpm'] = int(hr)
+    # Field 3: pedo_data (HisHealthPedo)
+    pedo_raw = f.get(3)
+    if isinstance(pedo_raw, bytes):
+        try:
+            pedo = _parse_protobuf(pedo_raw)
+            if pedo.get(4) is not None:
+                result['steps'] = int(pedo[4])
+            if pedo.get(3) is not None:
+                result['calories_kcal'] = int(pedo[3])
+            if pedo.get(5) is not None:
+                result['distance_m'] = int(pedo[5])
+        except Exception:
+            pass
 
-    spo2 = _get(3)
-    if spo2 is not None and 50 <= spo2 <= 100:
-        result['spo2_percent'] = int(spo2)
+    # Field 4: hr_data (HisHealthHr)
+    hr_raw = f.get(4)
+    if isinstance(hr_raw, bytes):
+        try:
+            hr = _parse_protobuf(hr_raw)
+            if hr.get(3) is not None:
+                result['heart_rate_bpm'] = int(hr[3])  # avg
+            if hr.get(1) is not None:
+                result['heart_rate_min'] = int(hr[1])
+            if hr.get(2) is not None:
+                result['heart_rate_max'] = int(hr[2])
+        except Exception:
+            pass
 
-    hrv = _get(4)
-    if hrv is not None:
-        result['hrv_ms'] = int(hrv)
+    # Field 5: hrv_data (HisHealthHrv) — floats stored as fixed32
+    hrv_raw = f.get(5)
+    if isinstance(hrv_raw, bytes):
+        try:
+            hrv = _parse_protobuf(hrv_raw)
+            if hrv.get(1) is not None:
+                result['hrv_sdnn'] = hrv[1]
+        except Exception:
+            pass
 
-    stress = _get(5)
-    if stress is not None and 0 <= stress <= 100:
-        result['stress_score'] = int(stress)
+    # Field 6: bp_data (HisHealthBp)
+    bp_raw = f.get(6)
+    if isinstance(bp_raw, bytes):
+        try:
+            bp = _parse_protobuf(bp_raw)
+            if bp.get(1) is not None:
+                result['bp_systolic_mmhg'] = int(bp[1])
+            if bp.get(2) is not None:
+                result['bp_diastolic_mmhg'] = int(bp[2])
+        except Exception:
+            pass
 
-    steps = _get(6)
-    if steps is not None:
-        result['steps'] = int(steps)
+    # Field 12: bxoy_data (HisHealthBOxy) — SpO2
+    spo2_raw = f.get(12)
+    if isinstance(spo2_raw, bytes):
+        try:
+            oxy = _parse_protobuf(spo2_raw)
+            if oxy.get(3) is not None:
+                result['spo2_percent'] = int(oxy[3])  # avg
+            if oxy.get(1) is not None:
+                result['spo2_min'] = int(oxy[1])
+            if oxy.get(2) is not None:
+                result['spo2_max'] = int(oxy[2])
+        except Exception:
+            pass
 
-    cal = _get(7)
-    if cal is not None:
-        result['calories_kcal'] = int(cal)
+    # Field 13: temperature_data (HisHealthTemp)
+    temp_raw = f.get(13)
+    if isinstance(temp_raw, bytes):
+        try:
+            temp = _parse_protobuf(temp_raw)
+            # esti_arm (field 3) is body temp in units of 0.01°C per iWOWN convention
+            if temp.get(3) is not None:
+                result['body_temperature_c'] = round(temp[3] / 100.0, 1)
+            elif temp.get(2) is not None:
+                result['body_temperature_c'] = round(temp[2] / 100.0, 1)
+        except Exception:
+            pass
 
-    dist = _get(8)
-    if dist is not None:
-        result['distance_m'] = int(dist)
-
-    temp = _get(9)
-    if temp is not None and temp > 0:
-        result['body_temperature_c'] = round(temp / 10.0, 1)
-
-    sys_bp = _get(10)
-    if sys_bp is not None and sys_bp > 0:
-        result['bp_systolic_mmhg'] = int(sys_bp)
-
-    dia_bp = _get(11)
-    if dia_bp is not None and dia_bp > 0:
-        result['bp_diastolic_mmhg'] = int(dia_bp)
-
-    sleep = _get(12)
-    if sleep is not None:
-        sleep_map = {0: 'awake', 1: 'light', 2: 'deep', 3: 'rem'}
-        result['sleep_state'] = sleep_map.get(int(sleep), f'unknown({sleep})')
-
-    batt = _get(13)
-    if batt is not None and 0 <= batt <= 100:
-        result['battery_level_pct'] = int(batt)
-
-    # Preserve any fields we didn't explicitly map
-    known = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}
-    raw_extras = {str(k): (v.hex() if isinstance(v, bytes) else v)
-                  for k, v in f.items() if k not in known}
+    # Preserve unmapped raw fields for debugging
+    known = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}
+    raw_extras = {
+        str(k): (v.hex() if isinstance(v, bytes) else v)
+        for k, v in f.items() if k not in known
+    }
     if raw_extras:
         result['raw_fields'] = raw_extras
 
     return result
-
 
 def _decode_step(payload: bytes) -> Dict[str, Any]:
     """
