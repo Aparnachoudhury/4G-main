@@ -408,6 +408,11 @@ def decode_packet(packet: bytes) -> Optional[Dict[str, Any]]:
 
     try:
         if opt == OPT_HEALTH:
+            logger.warning(f"PAYLOAD HEX: {payload.hex()}")
+
+            parsed = _parse_protobuf(payload)
+            logger.warning(f"PARSED FIELDS: {parsed}")
+
             decoded = _decode_health(payload)
         elif opt == OPT_STEP:
             decoded = _decode_step(payload)
