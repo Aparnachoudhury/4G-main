@@ -204,6 +204,29 @@ async def health_check():
 @app.post("/4g/pb/upload")
 async def pb_upload(request: Request, background_tasks: BackgroundTasks):
     try:
+        payload = await request.body()
+
+        logger.info("=== RAW REQUEST FROM WATCH ===")
+        logger.info(f"Headers: {dict(request.headers)}")
+        logger.info(f"Body size: {len(payload)} bytes")
+        logger.info(f"Body hex: {payload.hex()}")
+
+        try:
+            db = await get_database()
+            raw_collection = db.get_collection("raw_watch_logs")
+
+            await raw_collection.insert_one({
+                "device_id": get_device_id(request),
+                "raw_hex": payload.hex(),
+                "size": len(payload),
+                "headers": dict(request.headers),
+                "timestamp": get_current_timestamp()
+            })
+
+            logger.info("Raw packet saved")
+
+        except Exception as e:
+            logger.error(f"Raw save failed: {e}")
         content_type = request.headers.get("content-type", "")
         db = await get_database()
         collection = db.get_collection("health_data")
@@ -233,7 +256,7 @@ async def pb_upload(request: Request, background_tasks: BackgroundTasks):
             }
 
         else:
-            payload   = await request.body()
+            
             device_id = get_device_id(request)
             raw_hex   = payload.hex()
 
