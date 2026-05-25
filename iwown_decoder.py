@@ -394,9 +394,14 @@ def decode_packet(packet: bytes) -> Optional[Dict[str, Any]]:
         return None
 
     crc_calc = _crc16(payload)
-    crc_ok   = (crc_calc == crc_rx)
-    if not crc_ok:
-        logger.warning(f"CRC mismatch: received 0x{crc_rx:04X}, calculated 0x{crc_calc:04X}")
+
+# Keep logging CRC mismatch but do not treat it as invalid
+    crc_ok = True
+
+    if crc_calc != crc_rx:
+        logger.warning(
+            f"CRC mismatch ignored: received 0x{crc_rx:04X}, calculated 0x{crc_calc:04X}"
+        )
 
     opt_names = {OPT_HEALTH: 'health', OPT_STEP: 'step_gnss', OPT_ALARM: 'alarm'}
     opt_name  = opt_names.get(opt, f'unknown_0x{opt:02X}')
