@@ -162,17 +162,25 @@ def _decode_health(payload: bytes) -> Dict[str, Any]:
         except Exception:
             pass
 
-    # Field 4: hr_data (HisHealthHr)
-    hr_raw = f.get(4)
-    if isinstance(hr_raw, bytes):
+    # Field 4 → field 3 → field 4 = HR, field 6 = BP
+    wrapper_raw = f.get(4)
+    if isinstance(wrapper_raw, bytes):
         try:
-            hr = _parse_protobuf(hr_raw)
-            if hr.get(3) is not None:
-                result['heart_rate_bpm'] = int(hr[3])  # avg
-            if hr.get(1) is not None:
-                result['heart_rate_min'] = int(hr[1])
-            if hr.get(2) is not None:
-                result['heart_rate_max'] = int(hr[2])
+            wrapper = _parse_protobuf(wrapper_raw)
+            inner_raw = wrapper.get(3)
+            if isinstance(inner_raw, bytes):
+                inner = _parse_protobuf(inner_raw)
+                hr_raw = inner.get(4)
+                if isinstance(hr_raw, bytes):
+                    hr = _parse_protobuf(hr_raw)
+                    if hr.get(1) is not None: result['heart_rate_min'] = int(hr[1])
+                    if hr.get(2) is not None: result['heart_rate_max'] = int(hr[2])
+                    if hr.get(3) is not None: result['heart_rate_bpm'] = int(hr[3])
+                bp_raw = inner.get(6)
+                if isinstance(bp_raw, bytes):
+                    bp = _parse_protobuf(bp_raw)
+                    if bp.get(1) is not None: result['bp_systolic_mmhg'] = int(bp[1])
+                    if bp.get(2) is not None: result['bp_diastolic_mmhg'] = int(bp[2])
         except Exception:
             pass
 
