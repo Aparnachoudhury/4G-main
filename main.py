@@ -6,12 +6,6 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import json
 import os
-
-import firebase_admin
-from firebase_admin import credentials, firestore
-import json
-import os
-
 if not firebase_admin._apps:
     firebase_creds = os.getenv("FIREBASE_CREDENTIALS")
 
@@ -257,8 +251,9 @@ async def pb_upload(request: Request, background_tasks: BackgroundTasks):
 
         else:
             
-            device_id = get_device_id(request)
-            raw_hex   = payload.hex()
+            imei_prefix = payload[:15].decode('ascii', errors='ignore').strip()
+            device_id = imei_prefix if imei_prefix.isdigit() and len(imei_prefix) == 15 else get_device_id(request)
+            raw_hex = payload[15:].hex() if imei_prefix.isdigit() and len(imei_prefix) == 15 else payload.hex()
 
             try:
                 decoded_packets = decode_upload(raw_hex)
@@ -285,23 +280,26 @@ async def pb_upload(request: Request, background_tasks: BackgroundTasks):
                 "created_at": datetime.now(timezone.utc)
             }
 
-        # Save to MongoDB
-        print("MONGO DATA:", health_data)
-
-        result = await collection.insert_one(health_data)
-
-        print("Inserted ID:", result.inserted_id)
+         # Save to MongoDB
+        try:
+            result = await collection.insert_one(health_data)
+            logger.info(f"MongoDB saved: {result.inserted_id}")
+        except Exception as mongo_err:
+            logger.error(f"MongoDB save failed: {mongo_err}")
 
         # Save to Firebase
-        firebase_doc = health_data.copy()
-        if "_id" in firebase_doc:
-            firebase_doc["_id"] = str(firebase_doc["_id"])
-
-        firebase_db.collection("live_devices").document(
-            health_data["device_id"]
-        ).set(firebase_doc)
-
-        print("Saved:", health_data["device_id"])
+        try:
+            firebase_doc = health_data.copy()
+            if "_id" in firebase_doc:
+                firebase_doc["_id"] = str(firebase_doc["_id"])
+            if "created_at" in firebase_doc:
+                firebase_doc["created_at"] = firebase_doc["created_at"].isoformat()
+            firebase_db.collection("live_devices").document(
+                health_data["device_id"]
+            ).set(firebase_doc)
+            logger.info(f"Firebase saved: {health_data['device_id']}")
+        except Exception as firebase_err:
+            logger.error(f"Firebase save failed: {firebase_err}")
 
     except Exception as e:
         logger.error(f"Error in pb_upload: {e}")
@@ -598,26 +596,23 @@ if __name__ == "__main__":
     
 @app.get("/api/device/{device_id}/overview")
 async def get_overview(device_id: str):
-
-    db = await get_database()
-
-    latest = await db.get_collection(
-        'health_data'
-    ).find_one(
-        {"device_id": device_id},
-        sort=[("created_at",-1)]
-    )
-
-    decoded = (
-        (latest.get("decoded") or {})
-        .get("data", {})
-        if latest else {}
-    )
-
-    return {
-        "deviceId": device_id,
-        "steps": decoded.get("steps",0),
-        "heartRate": decoded.get("heart_rate_bpm",0),
-        "bloodOxygen": decoded.get("spo2_percent",0),
-        "bodyTemp": decoded.get("temperature",0)
-    }    
+    try:
+        db = await get_database()
+        latest = await db.get_collection('health_data').find_one(
+            {"device_id": device_id},
+            sort=[("created_at", -1)]
+        )
+        decoded = (
+            (latest.get("decoded") or {}).get("data", {})
+            if latest else {}
+        )
+        return {
+            "deviceId": device_id,
+            "steps": decoded.get("steps", 0),
+            "heartRate": decoded.get("heart_rate_bpm", 0),
+            "bloodOxygen": decoded.get("spo2_percent", 0),
+            "bodyTemp": decoded.get("temperature", 0)
+        }
+    except Exception as e:
+        logger.error(f"Error in get_overview for device {device_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
