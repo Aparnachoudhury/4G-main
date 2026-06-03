@@ -2,30 +2,22 @@
 iWOWN Health Monitoring FastAPI Application
 Production-ready API for iWOWN device data ingestion and dashboard
 """
-import firebase_admin
-from firebase_admin import credentials, firestore
-import json
-import os
-if not firebase_admin._apps:
-    firebase_creds = os.getenv("FIREBASE_CREDENTIALS")
-
-    if firebase_creds:
-        # Railway / production
-        firebase_config = json.loads(firebase_creds)
-        cred = credentials.Certificate(firebase_config)
-    else:
-        # Local
-        cred = credentials.Certificate("serviceAccountKey.json")
-
-    firebase_admin.initialize_app(cred)
-
-firebase_db = firestore.client()
+from app.core.firebase import firebase_db
 
 import os
 import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 from contextlib import asynccontextmanager
+from app.schemas.models import (
+    DeviceInfo,
+    AlarmData,
+    CallLogData,
+    StatusData,
+    SleepData,
+    HealthResponse,
+    ApiResponse
+)
 
 from fastapi import FastAPI, Request, HTTPException, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,9 +26,9 @@ from fastapi.security import HTTPBearer
 from pydantic import BaseModel, Field
 import uvicorn
 
-from database import init_database, get_database
-from config import settings
-from iwown_decoder import decode_upload  # ← ADDED
+from app.db.database import init_database, get_database
+from app.core.config import settings
+from app.services.iwown_decoder import decode_upload# ← ADDED
 
 # Configure logging
 logging.basicConfig(
@@ -48,55 +40,8 @@ logger = logging.getLogger(__name__)
 # Security
 security = HTTPBearer(auto_error=False)
 
-# Pydantic models for request/response validation
-class DeviceInfo(BaseModel):
-    deviceid: Optional[str] = None
-    battery: Optional[int] = None
-    firmware_version: Optional[str] = None
-    model: Optional[str] = None
 
-class AlarmData(BaseModel):
-    deviceid: Optional[str] = None
-    alarm_type: Optional[str] = None
-    timestamp: Optional[str] = None
-    location: Optional[str] = None
-
-class CallLogData(BaseModel):
-    deviceid: Optional[str] = None
-    call_type: Optional[str] = None
-    timestamp: Optional[str] = None
-    duration: Optional[int] = None
-
-class StatusData(BaseModel):
-    DeviceId: Optional[str] = None
-    Status: Optional[str] = None
-    battery_level: Optional[int] = None
-    signal_strength: Optional[int] = None
-
-class SleepData(BaseModel):
-    device_id: Optional[str] = None
-    sleep_date: Optional[str] = None
-    start_time: Optional[str] = None
-    end_time: Optional[str] = None
-    deep_sleep: Optional[int] = None
-    light_sleep: Optional[int] = None
-    weak_sleep: Optional[int] = None
-    eyemove_sleep: Optional[int] = None
-    score: Optional[int] = None
-    osahs_risk: Optional[int] = None
-    spo2_score: Optional[int] = None
-    sleep_hr: Optional[int] = None
-
-class HealthResponse(BaseModel):
-    ReturnCode: int = 0
-    Data: Dict[str, Any] = {}
-
-class ApiResponse(BaseModel):
-    success: bool
-    message: str
-    data: Optional[Any] = None
-    timestamp: str
-
+   
 # Utility functions
 def get_current_timestamp() -> str:
     """Get current UTC timestamp in ISO format"""
